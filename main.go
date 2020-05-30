@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/gin-gonic/gin"
 )
 
 type Balance struct {
@@ -34,7 +34,17 @@ type Config struct {
 	Secret string `toml:"secret"`
 }
 
+type Output struct {
+	Rate     string
+	Currency string
+	Yen      string
+}
+
 func main() {
+
+	router := gin.Default()
+	router.LoadHTMLGlob("index.html")
+
 	var config Config
 	_, err := toml.DecodeFile("config.tml", &config)
 	if err != nil {
@@ -46,9 +56,16 @@ func main() {
 	json.Unmarshal([]byte(client.account.balance()), &balance)
 
 	currencies := []string{"BTC", "ETH", "ETC", "LSK", "FCT", "XRP", "XEM", "LTC", "BCH", "MONA", "XLM", "QTUM"}
+	outputs := make([]Output, 0)
 	for _, v := range currencies {
-		DumpBalance(client, v, GetField(v, balance))
+		outputs = append(outputs, DumpBalance(client, v, GetField(v, balance)))
 	}
+
+	router.GET("/", func(ctx *gin.Context) {
+		ctx.HTML(200, "index.html", gin.H{"outputs": outputs})
+	})
+
+	router.Run()
 }
 
 func GetField(capital string, balance Balance) string {
@@ -82,13 +99,18 @@ func GetField(capital string, balance Balance) string {
 	}
 }
 
-func DumpBalance(client CoinCheck, capital string, field string) {
+func DumpBalance(client CoinCheck, capital string, field string) Output {
 	var rate Rate
 	json.Unmarshal([]byte(client.buy_rate.rate(strings.ToLower(capital)+"_jpy")), &rate)
-	fmt.Printf("【レート】%s: %s 円", capital, rate.Value)
 
-	fmt.Printf("【所持】%s: %s", capital, field)
+	var output Output
+	output.Rate = "【レート】" + capital + ": " + rate.Value + "円"
+	// fmt.Printf("【レート】%s: %s 円", capital, rate.Value)
+	output.Currency = "【所持通貨】" + capital + " : " + field
+	// fmt.Printf("【所持】%s: %s", capital, field)
 	i, _ := strconv.ParseFloat(rate.Value, 64)
 	j, _ := strconv.ParseFloat(field, 64)
-	fmt.Printf("【所持】%f 円\r\n", i*j)
+	output.Yen = "【円換算】" + strconv.FormatFloat(i*j, 'f', 4, 64) + "円\r\n"
+	// fmt.Printf("【所持】%f 円\r\n", i*j)
+	return output
 }
